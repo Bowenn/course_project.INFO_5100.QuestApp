@@ -57,3 +57,4 @@ mvn test
 ## API
 
 - `GET /api/health` – Health check endpoint
+- See [API.md](API.md) for full task system API reference
