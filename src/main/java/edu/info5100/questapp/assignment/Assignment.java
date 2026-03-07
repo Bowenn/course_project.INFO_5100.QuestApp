@@ -8,7 +8,7 @@ import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
 
 /**
- * Assignment entity. Represents a direct assignment of a task from a GIVER to a TAKER.
+ * Assignment entity. Represents a task accepted by a USER (the taker) from another USER (the task owner).
  * One task can have multiple assignments over time (e.g. if taker declines and giver reassigns).
  */
 @Entity
@@ -27,7 +27,7 @@ public class Assignment {
     @JoinColumn(name = "task_id", nullable = false)
     private Task task;
 
-    /** The user assigned to complete the task (TAKER) */
+    /** The user who accepted and will complete the task */
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "taker_id", nullable = false)

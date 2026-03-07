@@ -11,7 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Task entity. Created by a GIVER, assigned to a TAKER via {@link Assignment}.
+ * Task entity. Created by a USER (owner), accepted by another USER via {@link Assignment}.
  * Status flows: DRAFT → PUBLISHED → ASSIGNED → IN_PROGRESS → COMPLETED.
  */
 @Entity
@@ -38,7 +38,7 @@ public class Task {
     @Column(nullable = false, length = 20)
     private TaskStatus status = TaskStatus.DRAFT;
 
-    /** The user who created and owns this task (GIVER) */
+    /** The user who created and owns this task */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "giver_id", nullable = false)
     private User giver;

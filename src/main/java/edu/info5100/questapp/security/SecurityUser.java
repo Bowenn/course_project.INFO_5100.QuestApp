@@ -11,7 +11,7 @@ import java.util.stream.Stream;
 
 /**
  * Adapts our {@link User} to Spring Security's {@link UserDetails}.
- * Authorities are derived from the user's role (e.g. ROLE_GIVER).
+ * Authorities are derived from the user's role (e.g. ROLE_USER, ROLE_ADMIN).
  */
 public class SecurityUser implements UserDetails {
 

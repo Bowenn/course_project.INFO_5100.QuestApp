@@ -8,48 +8,47 @@ import edu.info5100.questapp.exception.ResourceNotFoundException;
 import edu.info5100.questapp.task.dto.CreateTaskRequest;
 import edu.info5100.questapp.task.dto.TaskResponse;
 import edu.info5100.questapp.task.dto.UpdateTaskRequest;
+import edu.info5100.questapp.user.Role;
 import edu.info5100.questapp.user.User;
-import edu.info5100.questapp.user.UserService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 
 /**
- * Service for task CRUD and lifecycle (publish, assign, cancel).
- * Enforces role-based rules: only giver can manage own tasks.
+ * Service for task CRUD and lifecycle (publish, accept, cancel, delete).
+ * Any USER can create and accept tasks. Only the task owner or ADMIN can cancel.
+ * Only ADMIN can delete tasks.
  */
 @Service
 public class TaskService {
 
     private final TaskRepository taskRepository;
     private final AssignmentRepository assignmentRepository;
-    private final UserService userService;
 
     public TaskService(TaskRepository taskRepository,
-                       AssignmentRepository assignmentRepository,
-                       UserService userService) {
+                       AssignmentRepository assignmentRepository) {
         this.taskRepository = taskRepository;
         this.assignmentRepository = assignmentRepository;
-        this.userService = userService;
     }
 
     /**
-     * Create a new task in DRAFT status. Only GIVER.
+     * Create a new task in DRAFT status. Any USER can create.
      */
     @Transactional
-    public TaskResponse create(CreateTaskRequest request, User giver) {
-        var task = new Task(request.title(), request.description(), giver);
+    public TaskResponse create(CreateTaskRequest request, User owner) {
+        var task = new Task(request.title(), request.description(), owner);
         task = taskRepository.save(task);
         return TaskResponse.from(task);
     }
 
     /**
-     * Update task. Only DRAFT tasks can be updated; only by the giver.
+     * Update task title/description. Only DRAFT tasks; only by the task owner.
      */
     @Transactional
     public TaskResponse update(Long taskId, UpdateTaskRequest request, User currentUser) {
-        var task = getTaskAndValidateGiver(taskId, currentUser);
+        var task = getTaskAndValidateOwner(taskId, currentUser);
         if (task.getStatus() != TaskStatus.DRAFT) {
             throw new BadRequestException("Only DRAFT tasks can be updated");
         }
@@ -64,11 +63,11 @@ public class TaskService {
     }
 
     /**
-     * Publish task (DRAFT → PUBLISHED). Makes it visible to takers.
+     * Publish task (DRAFT → PUBLISHED). Only the task owner can publish.
      */
     @Transactional
     public TaskResponse publish(Long taskId, User currentUser) {
-        var task = getTaskAndValidateGiver(taskId, currentUser);
+        var task = getTaskAndValidateOwner(taskId, currentUser);
         if (task.getStatus() != TaskStatus.DRAFT) {
             throw new BadRequestException("Only DRAFT tasks can be published");
         }
@@ -78,24 +77,23 @@ public class TaskService {
     }
 
     /**
-     * Assign task to a taker (direct assign). Task must be PUBLISHED.
+     * Accept a published task (self-assign). Any USER except the task owner can accept.
+     * Task must be PUBLISHED and not already assigned.
      */
     @Transactional
-    public TaskResponse assign(Long taskId, Long takerId, User currentUser) {
-        var task = getTaskAndValidateGiver(taskId, currentUser);
+    public TaskResponse accept(Long taskId, User currentUser) {
+        var task = getTaskOrThrow(taskId);
         if (task.getStatus() != TaskStatus.PUBLISHED) {
-            throw new BadRequestException("Only PUBLISHED tasks can be assigned");
+            throw new BadRequestException("Only PUBLISHED tasks can be accepted");
+        }
+        if (task.getGiver().getId().equals(currentUser.getId())) {
+            throw new BadRequestException("Cannot accept your own task");
         }
         if (assignmentRepository.findByTaskAndStatusNot(task, AssignmentStatus.DECLINED).isPresent()) {
             throw new BadRequestException("Task is already assigned");
         }
 
-        var taker = userService.getById(takerId);
-        if (taker.getRole() != edu.info5100.questapp.user.Role.TAKER) {
-            throw new BadRequestException("Target user must be a TAKER");
-        }
-
-        var assignment = new Assignment(task, taker);
+        var assignment = new Assignment(task, currentUser);
         assignmentRepository.save(assignment);
         task.setStatus(TaskStatus.ASSIGNED);
         task = taskRepository.save(task);
@@ -103,27 +101,51 @@ public class TaskService {
     }
 
     /**
-     * Cancel task. Giver or Admin. Task cannot be COMPLETED.
+     * Cancel task. Task owner or ADMIN. Cannot cancel COMPLETED or already CANCELLED tasks.
+     * Automatically declines any active assignment so takers cannot progress a cancelled task.
      */
     @Transactional
     public TaskResponse cancel(Long taskId, User currentUser) {
         var task = getTaskOrThrow(taskId);
-        boolean isGiver = task.getGiver().getId().equals(currentUser.getId());
-        boolean isAdmin = currentUser.getRole() == edu.info5100.questapp.user.Role.ADMIN;
-        if (!isGiver && !isAdmin) {
-            throw new BadRequestException("Only giver or admin can cancel");
+        boolean isOwner = task.getGiver().getId().equals(currentUser.getId());
+        boolean isAdmin = currentUser.getRole() == Role.ADMIN;
+        if (!isOwner && !isAdmin) {
+            throw new BadRequestException("Only the task owner or admin can cancel");
         }
         if (task.getStatus() == TaskStatus.COMPLETED) {
             throw new BadRequestException("Completed tasks cannot be cancelled");
         }
+        if (task.getStatus() == TaskStatus.CANCELLED) {
+            throw new BadRequestException("Task is already cancelled");
+        }
+        // Once work has started the owner can no longer cancel (only ADMIN can)
+        if (!isAdmin && task.getStatus() == TaskStatus.IN_PROGRESS) {
+            throw new BadRequestException("Cannot cancel a task that is already in progress");
+        }
+        // Decline any active assignment so the taker cannot progress it further
+        assignmentRepository.findByTaskAndStatusNot(task, AssignmentStatus.DECLINED)
+            .ifPresent(a -> {
+                a.setStatus(AssignmentStatus.DECLINED);
+                assignmentRepository.save(a);
+            });
         task.setStatus(TaskStatus.CANCELLED);
         task = taskRepository.save(task);
         return TaskResponse.from(task);
     }
 
     /**
-     * Get task by ID. Access: giver, assigned taker, or admin.
+     * Delete task permanently. ADMIN only.
      */
+    @Transactional
+    public void delete(Long taskId) {
+        var task = getTaskOrThrow(taskId);
+        taskRepository.delete(task);
+    }
+
+    /**
+     * Get task by ID. Access: task owner, any assigned user, or ADMIN.
+     */
+    @Transactional(readOnly = true)
     public TaskResponse getById(Long taskId, User currentUser) {
         var task = getTaskOrThrow(taskId);
         validateTaskAccess(task, currentUser);
@@ -131,29 +153,33 @@ public class TaskService {
     }
 
     /**
-     * List tasks for current user based on role:
-     * - GIVER: own tasks
-     * - TAKER: tasks assigned to me (from assignments)
+     * List tasks for current user:
+     * - USER: tasks they created + tasks assigned to them
      * - ADMIN: all tasks
      */
+    @Transactional(readOnly = true)
     public List<TaskResponse> list(User currentUser) {
-        return switch (currentUser.getRole()) {
-            case GIVER -> taskRepository.findByGiverOrderByCreatedAtDesc(currentUser).stream()
-                .map(TaskResponse::from).toList();
-            case TAKER -> assignmentRepository.findByTakerOrderByAssignedAtDesc(currentUser).stream()
-                .filter(a -> a.getStatus() != AssignmentStatus.DECLINED)
-                .map(a -> TaskResponse.from(a.getTask()))
-                .toList();
-            case ADMIN -> taskRepository.findAll().stream()
+        if (currentUser.getRole() == Role.ADMIN) {
+            return taskRepository.findAll().stream()
                 .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
                 .map(TaskResponse::from).toList();
-        };
+        }
+
+        // USER: union of created tasks and accepted tasks (no duplicates)
+        var result = new LinkedHashSet<Task>();
+        result.addAll(taskRepository.findByGiverOrderByCreatedAtDesc(currentUser));
+        assignmentRepository.findByTakerOrderByAssignedAtDesc(currentUser).stream()
+            .filter(a -> a.getStatus() != AssignmentStatus.DECLINED)
+            .map(Assignment::getTask)
+            .forEach(result::add);
+        return result.stream().map(TaskResponse::from).toList();
     }
 
     /**
-     * List published tasks (for takers to browse). Admin can also use.
+     * List all PUBLISHED tasks. Any authenticated user can browse these.
      */
-    public List<TaskResponse> listPublished(User currentUser) {
+    @Transactional(readOnly = true)
+    public List<TaskResponse> listPublished() {
         return taskRepository.findByStatusOrderByCreatedAtDesc(TaskStatus.PUBLISHED).stream()
             .map(TaskResponse::from).toList();
     }
@@ -165,20 +191,20 @@ public class TaskService {
             .orElseThrow(() -> new ResourceNotFoundException("Task", taskId));
     }
 
-    private Task getTaskAndValidateGiver(Long taskId, User currentUser) {
+    private Task getTaskAndValidateOwner(Long taskId, User currentUser) {
         var task = getTaskOrThrow(taskId);
         if (!task.getGiver().getId().equals(currentUser.getId())) {
-            throw new BadRequestException("Only the giver can perform this action");
+            throw new BadRequestException("Only the task owner can perform this action");
         }
         return task;
     }
 
     private void validateTaskAccess(Task task, User currentUser) {
-        boolean isGiver = task.getGiver().getId().equals(currentUser.getId());
-        boolean isTaker = task.getAssignments().stream()
+        boolean isOwner = task.getGiver().getId().equals(currentUser.getId());
+        boolean isAssigned = task.getAssignments().stream()
             .anyMatch(a -> a.getTaker().getId().equals(currentUser.getId()));
-        boolean isAdmin = currentUser.getRole() == edu.info5100.questapp.user.Role.ADMIN;
-        if (!isGiver && !isTaker && !isAdmin) {
+        boolean isAdmin = currentUser.getRole() == Role.ADMIN;
+        if (!isOwner && !isAssigned && !isAdmin) {
             throw new BadRequestException("Access denied");
         }
     }

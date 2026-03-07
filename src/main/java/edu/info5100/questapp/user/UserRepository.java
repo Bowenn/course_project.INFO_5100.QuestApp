@@ -23,6 +23,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
     /** Check if username is already taken */
     boolean existsByUsername(String username);
 
-    /** Find all users with a specific role (e.g. TAKER for assignment dropdown) */
+    /** Find all users with a specific role (e.g. USER for assignment dropdown) */
     List<User> findByRole(Role role);
 }

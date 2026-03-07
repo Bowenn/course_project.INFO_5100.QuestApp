@@ -12,7 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * User entity. Each user has one primary role (GIVER, TAKER, or ADMIN).
+ * User entity. Each user has one role: USER (default) or ADMIN (system-assigned).
  * A user can have multiple roles in the future by extending to a join table.
  */
 @Entity
@@ -51,7 +51,7 @@ public class User {
 
     private Instant updatedAt = Instant.now();
 
-    /** Tasks created by this user (when role is GIVER) */
+    /** Tasks created by this user */
     @OneToMany(mappedBy = "giver", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Task> tasksGiven = new ArrayList<>();
 

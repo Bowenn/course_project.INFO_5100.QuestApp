@@ -9,8 +9,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 /**
- * Loads initial test users if the database is empty.
- * Useful for development. Remove or disable in production.
+ * Initializes required system data on startup.
+ * - Always ensures at least one ADMIN account exists.
+ * - Seeds dev test USER accounts if no regular users exist yet.
  */
 @Configuration
 public class DataLoader {
@@ -18,11 +19,21 @@ public class DataLoader {
     @Bean
     public ApplicationRunner loadData(UserRepository userRepository, PasswordEncoder encoder) {
         return args -> {
-            if (userRepository.count() > 0) return;
+            // Always ensure an admin exists — ADMIN accounts are not creatable via registration
+            if (userRepository.findByRole(Role.ADMIN).isEmpty()) {
+                userRepository.save(new User(
+                    "admin",
+                    "admin@questapp.com",
+                    encoder.encode("admin123"),
+                    Role.ADMIN
+                ));
+            }
 
-            userRepository.save(new User("giver1", "giver@test.com", encoder.encode("password"), Role.GIVER));
-            userRepository.save(new User("taker1", "taker@test.com", encoder.encode("password"), Role.TAKER));
-            userRepository.save(new User("admin1", "admin@test.com", encoder.encode("password"), Role.ADMIN));
+            // Seed dev test accounts if no regular users exist yet
+            if (userRepository.findByRole(Role.USER).isEmpty()) {
+                userRepository.save(new User("alice", "alice@test.com", encoder.encode("password"), Role.USER));
+                userRepository.save(new User("bob", "bob@test.com", encoder.encode("password"), Role.USER));
+            }
         };
     }
 }

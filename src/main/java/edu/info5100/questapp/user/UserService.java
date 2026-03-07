@@ -3,10 +3,13 @@ package edu.info5100.questapp.user;
 import edu.info5100.questapp.exception.BadRequestException;
 import edu.info5100.questapp.exception.ResourceNotFoundException;
 import edu.info5100.questapp.user.dto.RegisterRequest;
+import edu.info5100.questapp.user.dto.UpdateProfileRequest;
 import edu.info5100.questapp.user.dto.UserResponse;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 /**
  * Service for user registration and lookup.
@@ -24,7 +27,7 @@ public class UserService {
     }
 
     /**
-     * Register a new user. Validates uniqueness of email and username.
+     * Register a new user. Role is always set to USER — users cannot self-assign ADMIN.
      */
     @Transactional
     public UserResponse register(RegisterRequest request) {
@@ -39,10 +42,52 @@ public class UserService {
             request.username(),
             request.email(),
             passwordEncoder.encode(request.password()),
-            request.role()
+            Role.USER
         );
         user = userRepository.save(user);
         return UserResponse.from(user);
+    }
+
+    /**
+     * Update username, email, and/or password for the current user.
+     * Only non-null, non-blank fields are applied.
+     * Password change requires currentPassword to be verified first.
+     */
+    @Transactional
+    public User updateProfile(UpdateProfileRequest request, User currentUser) {
+        var user = userRepository.findById(currentUser.getId())
+            .orElseThrow(() -> new ResourceNotFoundException("User", currentUser.getId()));
+
+        // Password change: verify current password first
+        if (request.newPassword() != null && !request.newPassword().isBlank()) {
+            if (request.currentPassword() == null || request.currentPassword().isBlank()) {
+                throw new BadRequestException("Current password is required to set a new password");
+            }
+            if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+                throw new BadRequestException("Current password is incorrect");
+            }
+            user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        }
+
+        // Username change
+        if (request.username() != null && !request.username().isBlank()
+                && !request.username().equals(user.getUsername())) {
+            if (userRepository.existsByUsername(request.username())) {
+                throw new BadRequestException("Username already taken");
+            }
+            user.setUsername(request.username());
+        }
+
+        // Email change
+        if (request.email() != null && !request.email().isBlank()
+                && !request.email().equals(user.getEmail())) {
+            if (userRepository.existsByEmail(request.email())) {
+                throw new BadRequestException("Email already registered");
+            }
+            user.setEmail(request.email());
+        }
+
+        return userRepository.save(user);
     }
 
     /**
@@ -62,10 +107,10 @@ public class UserService {
     }
 
     /**
-     * Get all users with role TAKER (for giver to pick when assigning).
+     * Get all users with role USER (for task assignment dropdown).
      */
-    public java.util.List<UserResponse> getTakers() {
-        return userRepository.findByRole(Role.TAKER).stream()
+    public List<UserResponse> getUsers() {
+        return userRepository.findByRole(Role.USER).stream()
             .map(UserResponse::from)
             .toList();
     }
@@ -73,7 +118,7 @@ public class UserService {
     /**
      * Get all users (admin only).
      */
-    public java.util.List<UserResponse> getAllUsers() {
+    public List<UserResponse> getAllUsers() {
         return userRepository.findAll().stream()
             .map(UserResponse::from)
             .toList();

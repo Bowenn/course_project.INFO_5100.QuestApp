@@ -22,6 +22,6 @@ public interface AssignmentRepository extends JpaRepository<Assignment, Long> {
     /** Active assignment for a task (not DECLINED); used to check if task is already assigned */
     Optional<Assignment> findByTaskAndStatusNot(Task task, AssignmentStatus status);
 
-    /** Assignments by status for a taker */
-    List<Assignment> findByTakerAndStatusOrderByAssignedAtDesc(User taker, AssignmentStatus status);
+    /** All assignments where the task was created by the given user */
+    List<Assignment> findByTaskGiverOrderByAssignedAtDesc(User giver);
 }

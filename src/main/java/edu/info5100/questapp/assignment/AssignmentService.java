@@ -2,19 +2,18 @@ package edu.info5100.questapp.assignment;
 
 import edu.info5100.questapp.exception.BadRequestException;
 import edu.info5100.questapp.exception.ResourceNotFoundException;
-import edu.info5100.questapp.task.Task;
 import edu.info5100.questapp.task.TaskRepository;
 import edu.info5100.questapp.task.TaskStatus;
+import edu.info5100.questapp.assignment.dto.AssignmentListResponse;
 import edu.info5100.questapp.assignment.dto.AssignmentResponse;
 import edu.info5100.questapp.assignment.dto.UpdateAssignmentRequest;
+import edu.info5100.questapp.user.Role;
 import edu.info5100.questapp.user.User;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-
 /**
- * Service for assignment lifecycle. Taker updates status: ASSIGNED → IN_PROGRESS → COMPLETED,
+ * Service for assignment lifecycle. Assigned user updates status: ASSIGNED → IN_PROGRESS → COMPLETED,
  * or DECLINED to reject.
  */
 @Service
@@ -29,8 +28,9 @@ public class AssignmentService {
     }
 
     /**
-     * Get assignment by ID. Access: giver, taker, or admin.
+     * Get assignment by ID. Access: task owner, assigned user, or ADMIN.
      */
+    @Transactional(readOnly = true)
     public AssignmentResponse getById(Long assignmentId, User currentUser) {
         var assignment = getAssignmentOrThrow(assignmentId);
         validateAssignmentAccess(assignment, currentUser);
@@ -38,39 +38,47 @@ public class AssignmentService {
     }
 
     /**
-     * List assignments for current user:
-     * - GIVER: assignments for my tasks
-     * - TAKER: assignments where I am the taker
-     * - ADMIN: all assignments
+     * List assignments for current user, grouped by perspective:
+     * - USER: { asOwner: tasks they created, asTaker: tasks they accepted }
+     * - ADMIN: all assignments in both lists (full visibility)
      */
-    public List<AssignmentResponse> list(User currentUser) {
-        return switch (currentUser.getRole()) {
-            case GIVER -> assignmentRepository.findAll().stream()
-                .filter(a -> a.getTask().getGiver().getId().equals(currentUser.getId()))
+    @Transactional(readOnly = true)
+    public AssignmentListResponse list(User currentUser) {
+        if (currentUser.getRole() == Role.ADMIN) {
+            var all = assignmentRepository.findAll().stream()
                 .sorted((a, b) -> b.getAssignedAt().compareTo(a.getAssignedAt()))
                 .map(AssignmentResponse::from).toList();
-            case TAKER -> assignmentRepository.findByTakerOrderByAssignedAtDesc(currentUser).stream()
-                .map(AssignmentResponse::from).toList();
-            case ADMIN -> assignmentRepository.findAll().stream()
-                .sorted((a, b) -> b.getAssignedAt().compareTo(a.getAssignedAt()))
-                .map(AssignmentResponse::from).toList();
-        };
+            return new AssignmentListResponse(all, all);
+        }
+
+        var asOwner = assignmentRepository.findByTaskGiverOrderByAssignedAtDesc(currentUser).stream()
+            .map(AssignmentResponse::from).toList();
+
+        var asTaker = assignmentRepository.findByTakerOrderByAssignedAtDesc(currentUser).stream()
+            .map(AssignmentResponse::from).toList();
+
+        return new AssignmentListResponse(asOwner, asTaker);
     }
 
     /**
-     * Taker updates assignment status: start work, complete, or decline.
+     * Assigned user updates assignment status: start work, complete, or decline.
      */
     @Transactional
     public AssignmentResponse update(Long assignmentId, UpdateAssignmentRequest request, User currentUser) {
         var assignment = getAssignmentOrThrow(assignmentId);
         if (!assignment.getTaker().getId().equals(currentUser.getId())) {
-            throw new BadRequestException("Only the assigned taker can update this assignment");
+            throw new BadRequestException("Only the assigned user can update this assignment");
         }
 
         var task = assignment.getTask();
         var status = request.status();
 
+        if (task.getStatus() == TaskStatus.CANCELLED) {
+            throw new BadRequestException("Cannot update assignment: task has been cancelled");
+        }
+
         switch (status) {
+            case ASSIGNED -> throw new BadRequestException("Cannot manually set status to ASSIGNED");
             case IN_PROGRESS -> {
                 if (assignment.getStatus() != AssignmentStatus.ASSIGNED) {
                     throw new BadRequestException("Only ASSIGNED can transition to IN_PROGRESS");
@@ -111,10 +119,10 @@ public class AssignmentService {
     }
 
     private void validateAssignmentAccess(Assignment assignment, User currentUser) {
-        boolean isGiver = assignment.getTask().getGiver().getId().equals(currentUser.getId());
+        boolean isOwner = assignment.getTask().getGiver().getId().equals(currentUser.getId());
         boolean isTaker = assignment.getTaker().getId().equals(currentUser.getId());
-        boolean isAdmin = currentUser.getRole() == edu.info5100.questapp.user.Role.ADMIN;
-        if (!isGiver && !isTaker && !isAdmin) {
+        boolean isAdmin = currentUser.getRole() == Role.ADMIN;
+        if (!isOwner && !isTaker && !isAdmin) {
             throw new BadRequestException("Access denied");
         }
     }

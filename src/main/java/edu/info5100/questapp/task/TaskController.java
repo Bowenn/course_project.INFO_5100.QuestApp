@@ -1,12 +1,12 @@
 package edu.info5100.questapp.task;
 
-import edu.info5100.questapp.assignment.dto.AssignTaskRequest;
 import edu.info5100.questapp.security.SecurityUser;
 import edu.info5100.questapp.task.dto.CreateTaskRequest;
 import edu.info5100.questapp.task.dto.TaskResponse;
 import edu.info5100.questapp.task.dto.UpdateTaskRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -14,7 +14,9 @@ import java.util.List;
 
 /**
  * Task CRUD and lifecycle endpoints.
- * All endpoints require authentication. Role-based access enforced in service.
+ * All endpoints require authentication.
+ * USERs can create, view, and accept tasks.
+ * ADMIN can additionally delete any task.
  */
 @RestController
 @RequestMapping("/api/tasks")
@@ -28,9 +30,10 @@ public class TaskController {
 
     /**
      * POST /api/tasks
-     * Create a new task in DRAFT status. GIVER only.
+     * Create a new task in DRAFT status. USER only.
      */
     @PostMapping
+    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<TaskResponse> create(
             @Valid @RequestBody CreateTaskRequest request,
             @AuthenticationPrincipal SecurityUser securityUser) {
@@ -39,27 +42,30 @@ public class TaskController {
 
     /**
      * GET /api/tasks
-     * List tasks based on role: GIVER=own, TAKER=assigned to me, ADMIN=all.
+     * List tasks: USER sees own + accepted tasks; ADMIN sees all.
      */
     @GetMapping
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
     public ResponseEntity<List<TaskResponse>> list(@AuthenticationPrincipal SecurityUser securityUser) {
         return ResponseEntity.ok(taskService.list(securityUser.getUser()));
     }
 
     /**
      * GET /api/tasks/published
-     * List all published tasks (available for assignment). GIVER and ADMIN.
+     * List all published tasks available to accept.
      */
     @GetMapping("/published")
-    public ResponseEntity<List<TaskResponse>> listPublished(@AuthenticationPrincipal SecurityUser securityUser) {
-        return ResponseEntity.ok(taskService.listPublished(securityUser.getUser()));
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
+    public ResponseEntity<List<TaskResponse>> listPublished() {
+        return ResponseEntity.ok(taskService.listPublished());
     }
 
     /**
      * GET /api/tasks/{id}
-     * Get task by ID. Access: giver, assigned taker, or admin.
+     * Get task by ID. Access: task owner, assigned user, or ADMIN.
      */
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
     public ResponseEntity<TaskResponse> getById(
             @PathVariable Long id,
             @AuthenticationPrincipal SecurityUser securityUser) {
@@ -68,9 +74,10 @@ public class TaskController {
 
     /**
      * PUT /api/tasks/{id}
-     * Update task. Only DRAFT; only by giver.
+     * Update task. Only DRAFT; only by the task owner.
      */
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<TaskResponse> update(
             @PathVariable Long id,
             @Valid @RequestBody UpdateTaskRequest request,
@@ -80,9 +87,10 @@ public class TaskController {
 
     /**
      * POST /api/tasks/{id}/publish
-     * Publish task (DRAFT → PUBLISHED). GIVER only.
+     * Publish task (DRAFT → PUBLISHED). Task owner only.
      */
     @PostMapping("/{id}/publish")
+    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<TaskResponse> publish(
             @PathVariable Long id,
             @AuthenticationPrincipal SecurityUser securityUser) {
@@ -90,25 +98,37 @@ public class TaskController {
     }
 
     /**
-     * POST /api/tasks/{id}/assign
-     * Assign task to a taker (direct assign). Task must be PUBLISHED. GIVER only.
+     * POST /api/tasks/{id}/accept
+     * Accept (self-assign) a published task. Any USER except the task owner.
      */
-    @PostMapping("/{id}/assign")
-    public ResponseEntity<TaskResponse> assign(
+    @PostMapping("/{id}/accept")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<TaskResponse> accept(
             @PathVariable Long id,
-            @Valid @RequestBody AssignTaskRequest request,
             @AuthenticationPrincipal SecurityUser securityUser) {
-        return ResponseEntity.ok(taskService.assign(id, request.takerId(), securityUser.getUser()));
+        return ResponseEntity.ok(taskService.accept(id, securityUser.getUser()));
     }
 
     /**
      * POST /api/tasks/{id}/cancel
-     * Cancel task. GIVER or ADMIN. Cannot cancel COMPLETED.
+     * Cancel task. Task owner or ADMIN. Cannot cancel COMPLETED tasks.
      */
     @PostMapping("/{id}/cancel")
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
     public ResponseEntity<TaskResponse> cancel(
             @PathVariable Long id,
             @AuthenticationPrincipal SecurityUser securityUser) {
         return ResponseEntity.ok(taskService.cancel(id, securityUser.getUser()));
+    }
+
+    /**
+     * DELETE /api/tasks/{id}
+     * Permanently delete a task. ADMIN only.
+     */
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        taskService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 }
