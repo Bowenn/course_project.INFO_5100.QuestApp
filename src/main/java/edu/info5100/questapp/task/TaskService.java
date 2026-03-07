@@ -49,8 +49,8 @@ public class TaskService {
     @Transactional
     public TaskResponse update(Long taskId, UpdateTaskRequest request, User currentUser) {
         var task = getTaskAndValidateOwner(taskId, currentUser);
-        if (task.getStatus() != TaskStatus.DRAFT) {
-            throw new BadRequestException("Only DRAFT tasks can be updated");
+        if (task.getStatus() != TaskStatus.DRAFT && task.getStatus() != TaskStatus.CANCELLED) {
+            throw new BadRequestException("Only DRAFT or CANCELLED tasks can be updated");
         }
         if (request.title() != null && !request.title().isBlank()) {
             task.setTitle(request.title());
@@ -63,13 +63,13 @@ public class TaskService {
     }
 
     /**
-     * Publish task (DRAFT → PUBLISHED). Only the task owner can publish.
+     * Publish task (DRAFT/CANCELLED → PUBLISHED). Only the task owner can publish.
      */
     @Transactional
     public TaskResponse publish(Long taskId, User currentUser) {
         var task = getTaskAndValidateOwner(taskId, currentUser);
-        if (task.getStatus() != TaskStatus.DRAFT) {
-            throw new BadRequestException("Only DRAFT tasks can be published");
+        if (task.getStatus() != TaskStatus.DRAFT && task.getStatus() != TaskStatus.CANCELLED) {
+            throw new BadRequestException("Only DRAFT or CANCELLED tasks can be published");
         }
         task.setStatus(TaskStatus.PUBLISHED);
         task = taskRepository.save(task);
@@ -112,6 +112,9 @@ public class TaskService {
         if (!isOwner && !isAdmin) {
             throw new BadRequestException("Only the task owner or admin can cancel");
         }
+        if (task.getStatus() == TaskStatus.DRAFT) {
+            throw new BadRequestException("DRAFT tasks cannot be cancelled — delete them instead");
+        }
         if (task.getStatus() == TaskStatus.COMPLETED) {
             throw new BadRequestException("Completed tasks cannot be cancelled");
         }
@@ -134,11 +137,20 @@ public class TaskService {
     }
 
     /**
-     * Delete task permanently. ADMIN only.
+     * Delete task permanently.
+     * ADMIN can delete any task. Task owner can delete their own DRAFT or CANCELLED tasks.
      */
     @Transactional
-    public void delete(Long taskId) {
+    public void delete(Long taskId, User currentUser) {
         var task = getTaskOrThrow(taskId);
+        boolean isAdmin = currentUser.getRole() == Role.ADMIN;
+        boolean isOwner = task.getGiver().getId().equals(currentUser.getId());
+        if (!isAdmin && !isOwner) {
+            throw new BadRequestException("Only the task owner or admin can delete this task");
+        }
+        if (!isAdmin && task.getStatus() != TaskStatus.CANCELLED && task.getStatus() != TaskStatus.DRAFT) {
+            throw new BadRequestException("You can only delete your own draft or cancelled tasks");
+        }
         taskRepository.delete(task);
     }
 

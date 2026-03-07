@@ -123,12 +123,14 @@ public class TaskController {
 
     /**
      * DELETE /api/tasks/{id}
-     * Permanently delete a task. ADMIN only.
+     * Permanently delete a task. ADMIN can delete any task; owner can delete their own CANCELLED tasks.
      */
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        taskService.delete(id);
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
+    public ResponseEntity<Void> delete(
+            @PathVariable Long id,
+            @AuthenticationPrincipal SecurityUser securityUser) {
+        taskService.delete(id, securityUser.getUser());
         return ResponseEntity.noContent().build();
     }
 }
