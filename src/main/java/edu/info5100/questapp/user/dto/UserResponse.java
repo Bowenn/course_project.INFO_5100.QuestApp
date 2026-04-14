@@ -14,6 +14,7 @@ public record UserResponse(
     String username,
     String email,
     Role role,
+    Double balance,
     Instant createdAt
 ) {
     public static UserResponse from(User user) {
@@ -22,6 +23,7 @@ public record UserResponse(
             user.getUsername(),
             user.getEmail(),
             user.getRole(),
+            user.getBalance(),
             user.getCreatedAt()
         );
     }

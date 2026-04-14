@@ -1,15 +1,20 @@
 package edu.info5100.questapp.user;
 
-import edu.info5100.questapp.security.SecurityUser;
-import edu.info5100.questapp.user.dto.UserResponse;
+import java.util.List;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
+import edu.info5100.questapp.security.SecurityUser;
+import edu.info5100.questapp.user.dto.DepositRequest;
+import edu.info5100.questapp.user.dto.UserResponse;
+import edu.info5100.questapp.user.dto.WithdrawRequest;
 
 /**
  * User-related endpoints.
@@ -55,5 +60,27 @@ public class UserController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<UserResponse>> listAll(@AuthenticationPrincipal SecurityUser securityUser) {
         return ResponseEntity.ok(userService.getAllUsers());
+    }
+
+    /**
+     * POST /api/users/deposit
+     * Add balance to current user's account.
+     */
+    @PostMapping("/deposit")
+    public ResponseEntity<UserResponse> deposit(
+            @RequestBody DepositRequest request,
+            @AuthenticationPrincipal SecurityUser securityUser) {
+        return ResponseEntity.ok(userService.deposit(securityUser.getUser(), request.amount()));
+    }
+
+    /**
+     * POST /api/users/withdraw
+     * Withdraw balance from current user's account.
+     */
+    @PostMapping("/withdraw")
+    public ResponseEntity<UserResponse> withdraw(
+            @RequestBody WithdrawRequest request,
+            @AuthenticationPrincipal SecurityUser securityUser) {
+        return ResponseEntity.ok(userService.withdraw(securityUser.getUser(), request.amount()));
     }
 }

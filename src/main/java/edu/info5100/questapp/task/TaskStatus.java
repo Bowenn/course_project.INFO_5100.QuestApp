@@ -16,6 +16,8 @@ public enum TaskStatus {
     IN_PROGRESS,
     /** Task has been completed by the taker */
     COMPLETED,
+    /** Task completion confirmed by giver, bounty transferred */
+    CONFIRMED,
     /** Task was cancelled by giver or admin */
     CANCELLED
 }

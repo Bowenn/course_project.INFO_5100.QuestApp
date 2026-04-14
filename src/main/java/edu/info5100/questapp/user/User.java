@@ -1,15 +1,26 @@
 package edu.info5100.questapp.user;
 
-import edu.info5100.questapp.assignment.Assignment;
-import edu.info5100.questapp.task.Task;
-import jakarta.persistence.*;
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
-
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+
+import edu.info5100.questapp.assignment.Assignment;
+import edu.info5100.questapp.task.Task;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 /**
  * User entity. Each user has one primary role (GIVER, TAKER, or ADMIN).
@@ -45,6 +56,9 @@ public class User {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private Role role;
+
+    @Column(nullable = false, columnDefinition = "DECIMAL(10,2) DEFAULT 0.00")
+    private Double balance = 0.0;
 
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
@@ -118,6 +132,14 @@ public class User {
 
     public void setRole(Role role) {
         this.role = role;
+    }
+
+    public Double getBalance() {
+        return balance;
+    }
+
+    public void setBalance(Double balance) {
+        this.balance = balance;
     }
 
     public Instant getCreatedAt() {

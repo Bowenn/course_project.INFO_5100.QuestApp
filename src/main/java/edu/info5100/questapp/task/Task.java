@@ -1,14 +1,28 @@
 package edu.info5100.questapp.task;
 
-import edu.info5100.questapp.assignment.Assignment;
-import edu.info5100.questapp.user.User;
-import jakarta.persistence.*;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
-
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+
+import edu.info5100.questapp.assignment.Assignment;
+import edu.info5100.questapp.user.User;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 /**
  * Task entity. Created by a GIVER, assigned to a TAKER via {@link Assignment}.
@@ -34,6 +48,9 @@ public class Task {
     @Column(length = 2000)
     private String description;
 
+    @Column(nullable = false, columnDefinition = "DECIMAL(10,2) DEFAULT 0.00")
+    private Double bounty = 0.0;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private TaskStatus status = TaskStatus.DRAFT;
@@ -57,9 +74,10 @@ public class Task {
     public Task() {
     }
 
-    public Task(String title, String description, User giver) {
+    public Task(String title, String description, Double bounty, User giver) {
         this.title = title;
         this.description = description;
+        this.bounty = bounty;
         this.giver = giver;
     }
 
@@ -94,6 +112,14 @@ public class Task {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public Double getBounty() {
+        return bounty;
+    }
+
+    public void setBounty(Double bounty) {
+        this.bounty = bounty;
     }
 
     public TaskStatus getStatus() {

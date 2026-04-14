@@ -1,7 +1,8 @@
 # QuestApp API Reference
 
-All endpoints except `/api/auth/register` and `/api/health` require **HTTP Basic Auth**:
-`Authorization: Basic base64(email:password)`
+All endpoints except `/api/auth/register`, `/api/auth/login`, and `/api/health` require **HTTP Basic Auth** or **Bearer Token**:
+- `Authorization: Basic base64(email:password)`
+- `Authorization: Bearer {jwt_token}`
 
 ## Test Users (loaded on first run)
 
@@ -18,6 +19,7 @@ All endpoints except `/api/auth/register` and `/api/health` require **HTTP Basic
 | Method | Endpoint           | Auth | Description                    |
 |--------|--------------------|------|--------------------------------|
 | POST   | /api/auth/register | No   | Register new user              |
+| POST   | /api/auth/login    | No   | Login and get JWT token        |
 | GET    | /api/auth/me       | Yes  | Current user profile           |
 
 **Register body:**
@@ -30,6 +32,28 @@ All endpoints except `/api/auth/register` and `/api/health` require **HTTP Basic
 }
 ```
 `role`: `GIVER` | `TAKER` | `ADMIN`
+
+**Login body:**
+```json
+{
+  "email": "alice@example.com",
+  "password": "secret123"
+}
+```
+
+**Login response:**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiJ9...",
+  "user": {
+    "id": 1,
+    "username": "alice",
+    "email": "alice@example.com",
+    "role": "GIVER",
+    "createdAt": "2023-01-01T00:00:00Z"
+  }
+}
+```
 
 ---
 
@@ -60,7 +84,8 @@ All endpoints except `/api/auth/register` and `/api/health` require **HTTP Basic
 ```json
 {
   "title": "Fix bug in login",
-  "description": "The login form does not validate email."
+  "description": "The login form does not validate email.",
+  "bounty": 50.0
 }
 ```
 
@@ -80,6 +105,7 @@ All endpoints except `/api/auth/register` and `/api/health` require **HTTP Basic
 | GET    | /api/assignments      | Yes  | All   | List: GIVER=my tasks, TAKER=mine, ADMIN=all |
 | GET    | /api/assignments/{id} | Yes  | *     | Get assignment by ID                |
 | PUT    | /api/assignments/{id} | Yes  | TAKER | Update status (start, complete, decline) |
+| POST   | /api/assignments/{id}/confirm | Yes | GIVER | Confirm completion and transfer bounty |
 
 **Update assignment body:**
 ```json
@@ -99,5 +125,6 @@ All endpoints except `/api/auth/register` and `/api/health` require **HTTP Basic
 3. **GIVER** assigns to taker → `POST /api/tasks/{id}/assign` with `{"takerId": 2}` (status: ASSIGNED)
 4. **TAKER** starts work → `PUT /api/assignments/{id}` with `{"status": "IN_PROGRESS"}` (status: IN_PROGRESS)
 5. **TAKER** completes → `PUT /api/assignments/{id}` with `{"status": "COMPLETED", "note": "Done"}` (status: COMPLETED)
+6. **GIVER** confirms → `POST /api/assignments/{id}/confirm` (status: CONFIRMED, bounty transferred)
 
 Or **TAKER** declines → `PUT /api/assignments/{id}` with `{"status": "DECLINED"}` → task returns to PUBLISHED.

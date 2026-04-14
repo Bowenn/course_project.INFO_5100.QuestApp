@@ -12,5 +12,7 @@ public record CreateTaskRequest(
     String title,
 
     @Size(max = 2000)
-    String description
+    String description,
+
+    Double bounty
 ) {}

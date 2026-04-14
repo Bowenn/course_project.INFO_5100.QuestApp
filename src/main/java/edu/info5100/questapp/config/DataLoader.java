@@ -20,9 +20,17 @@ public class DataLoader {
         return args -> {
             if (userRepository.count() > 0) return;
 
-            userRepository.save(new User("giver1", "giver@test.com", encoder.encode("password"), Role.GIVER));
-            userRepository.save(new User("taker1", "taker@test.com", encoder.encode("password"), Role.TAKER));
-            userRepository.save(new User("admin1", "admin@test.com", encoder.encode("password"), Role.ADMIN));
+            User giver = new User("giver1", "giver@test.com", encoder.encode("password"), Role.GIVER);
+            giver.setBalance(1000.0); // Initial balance for giver
+            userRepository.save(giver);
+
+            User taker = new User("taker1", "taker@test.com", encoder.encode("password"), Role.TAKER);
+            taker.setBalance(100.0); // Initial balance for taker
+            userRepository.save(taker);
+
+            User admin = new User("admin1", "admin@test.com", encoder.encode("password"), Role.ADMIN);
+            admin.setBalance(0.0);
+            userRepository.save(admin);
         };
     }
 }

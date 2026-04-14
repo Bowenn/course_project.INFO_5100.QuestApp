@@ -1,16 +1,26 @@
 package edu.info5100.questapp.task;
 
+import java.util.List;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import edu.info5100.questapp.assignment.AssignmentService;
+import edu.info5100.questapp.assignment.dto.AssignmentResponse;
 import edu.info5100.questapp.assignment.dto.AssignTaskRequest;
 import edu.info5100.questapp.security.SecurityUser;
 import edu.info5100.questapp.task.dto.CreateTaskRequest;
 import edu.info5100.questapp.task.dto.TaskResponse;
 import edu.info5100.questapp.task.dto.UpdateTaskRequest;
 import jakarta.validation.Valid;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 /**
  * Task CRUD and lifecycle endpoints.
@@ -21,9 +31,11 @@ import java.util.List;
 public class TaskController {
 
     private final TaskService taskService;
+    private final AssignmentService assignmentService;
 
-    public TaskController(TaskService taskService) {
+    public TaskController(TaskService taskService, AssignmentService assignmentService) {
         this.taskService = taskService;
+        this.assignmentService = assignmentService;
     }
 
     /**
@@ -90,6 +102,17 @@ public class TaskController {
     }
 
     /**
+     * POST /api/tasks/{id}/accept
+     * Accept task from published pool. TAKER only.
+     */
+    @PostMapping("/{id}/accept")
+    public ResponseEntity<TaskResponse> accept(
+            @PathVariable Long id,
+            @AuthenticationPrincipal SecurityUser securityUser) {
+        return ResponseEntity.ok(taskService.accept(id, securityUser.getUser()));
+    }
+
+    /**
      * POST /api/tasks/{id}/assign
      * Assign task to a taker (direct assign). Task must be PUBLISHED. GIVER only.
      */
@@ -102,6 +125,18 @@ public class TaskController {
     }
 
     /**
+     * POST /api/tasks/{id}/confirm
+     * Giver confirms task completion and pays bounty to taker.
+     * Finds the COMPLETED assignment for the task and confirms it.
+     */
+    @PostMapping("/{id}/confirm")
+    public ResponseEntity<AssignmentResponse> confirm(
+            @PathVariable Long id,
+            @AuthenticationPrincipal SecurityUser securityUser) {
+        return ResponseEntity.ok(assignmentService.confirmByTaskId(id, securityUser.getUser()));
+    }
+
+    /**
      * POST /api/tasks/{id}/cancel
      * Cancel task. GIVER or ADMIN. Cannot cancel COMPLETED.
      */
@@ -110,5 +145,17 @@ public class TaskController {
             @PathVariable Long id,
             @AuthenticationPrincipal SecurityUser securityUser) {
         return ResponseEntity.ok(taskService.cancel(id, securityUser.getUser()));
+    }
+
+    /**
+     * DELETE /api/tasks/{id}
+     * Delete task. ADMIN only.
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(
+            @PathVariable Long id,
+            @AuthenticationPrincipal SecurityUser securityUser) {
+        taskService.delete(id, securityUser.getUser());
+        return ResponseEntity.noContent().build();
     }
 }

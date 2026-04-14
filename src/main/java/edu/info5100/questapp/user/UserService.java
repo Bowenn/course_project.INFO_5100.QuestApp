@@ -1,12 +1,13 @@
 package edu.info5100.questapp.user;
 
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import edu.info5100.questapp.exception.BadRequestException;
 import edu.info5100.questapp.exception.ResourceNotFoundException;
 import edu.info5100.questapp.user.dto.RegisterRequest;
 import edu.info5100.questapp.user.dto.UserResponse;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Service for user registration and lookup.
@@ -41,6 +42,8 @@ public class UserService {
             passwordEncoder.encode(request.password()),
             request.role()
         );
+        // Set initial balance for new users
+        user.setBalance(100.0);
         user = userRepository.save(user);
         return UserResponse.from(user);
     }
@@ -77,5 +80,37 @@ public class UserService {
         return userRepository.findAll().stream()
             .map(UserResponse::from)
             .toList();
+    }
+
+    /**
+     * Deposit balance to user account.
+     */
+    @Transactional
+    public UserResponse deposit(User user, Double amount) {
+        if (amount <= 0) {
+            throw new BadRequestException("Deposit amount must be greater than 0");
+        }
+        if (amount > 10000.0) {
+            throw new BadRequestException("Maximum deposit amount is $10,000");
+        }
+        user.setBalance(user.getBalance() + amount);
+        user = userRepository.save(user);
+        return UserResponse.from(user);
+    }
+
+    /**
+     * Withdraw balance from user account.
+     */
+    @Transactional
+    public UserResponse withdraw(User user, Double amount) {
+        if (amount <= 0) {
+            throw new BadRequestException("Withdrawal amount must be greater than 0");
+        }
+        if (user.getBalance() < amount) {
+            throw new BadRequestException("Insufficient balance for withdrawal");
+        }
+        user.setBalance(user.getBalance() - amount);
+        user = userRepository.save(user);
+        return UserResponse.from(user);
     }
 }

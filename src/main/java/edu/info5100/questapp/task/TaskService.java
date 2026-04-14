@@ -1,5 +1,10 @@
 package edu.info5100.questapp.task;
 
+import java.util.List;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import edu.info5100.questapp.assignment.Assignment;
 import edu.info5100.questapp.assignment.AssignmentRepository;
 import edu.info5100.questapp.assignment.AssignmentStatus;
@@ -10,10 +15,6 @@ import edu.info5100.questapp.task.dto.TaskResponse;
 import edu.info5100.questapp.task.dto.UpdateTaskRequest;
 import edu.info5100.questapp.user.User;
 import edu.info5100.questapp.user.UserService;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
 
 /**
  * Service for task CRUD and lifecycle (publish, assign, cancel).
@@ -39,7 +40,16 @@ public class TaskService {
      */
     @Transactional
     public TaskResponse create(CreateTaskRequest request, User giver) {
-        var task = new Task(request.title(), request.description(), giver);
+        Double bounty = request.bounty() != null ? request.bounty() : 0.0;
+        if (bounty < 0) {
+            throw new BadRequestException("Bounty cannot be negative");
+        }
+        if (giver.getBalance() < bounty) {
+            throw new BadRequestException("Insufficient balance for bounty");
+        }
+        // Deduct bounty from giver's balance
+        giver.setBalance(giver.getBalance() - bounty);
+        var task = new Task(request.title(), request.description(), bounty, giver);
         task = taskRepository.save(task);
         return TaskResponse.from(task);
     }
@@ -103,6 +113,30 @@ public class TaskService {
     }
 
     /**
+     * Accept a published task. Only TAKER can do this, and task must be PUBLISHED.
+     */
+    @Transactional
+    public TaskResponse accept(Long taskId, User currentUser) {
+        if (currentUser.getRole() != edu.info5100.questapp.user.Role.TAKER) {
+            throw new BadRequestException("Only a TAKER can accept tasks");
+        }
+
+        var task = getTaskOrThrow(taskId);
+        if (task.getStatus() != TaskStatus.PUBLISHED) {
+            throw new BadRequestException("Only PUBLISHED tasks can be accepted");
+        }
+        if (assignmentRepository.findByTaskAndStatusNot(task, AssignmentStatus.DECLINED).isPresent()) {
+            throw new BadRequestException("Task is already assigned");
+        }
+
+        var assignment = new Assignment(task, currentUser);
+        assignmentRepository.save(assignment);
+        task.setStatus(TaskStatus.ASSIGNED);
+        task = taskRepository.save(task);
+        return TaskResponse.from(task);
+    }
+
+    /**
      * Cancel task. Giver or Admin. Task cannot be COMPLETED.
      */
     @Transactional
@@ -119,6 +153,24 @@ public class TaskService {
         task.setStatus(TaskStatus.CANCELLED);
         task = taskRepository.save(task);
         return TaskResponse.from(task);
+    }
+
+    /**
+     * Delete task. ADMIN or task giver for DRAFT/CANCELLED tasks.
+     */
+    @Transactional
+    public void delete(Long taskId, User currentUser) {
+        var task = getTaskOrThrow(taskId);
+        boolean isAdmin = currentUser.getRole() == edu.info5100.questapp.user.Role.ADMIN;
+        boolean isGiverAndDeletable = task.getGiver().getId().equals(currentUser.getId()) &&
+            (task.getStatus() == TaskStatus.DRAFT || task.getStatus() == TaskStatus.CANCELLED);
+        if (!isAdmin && !isGiverAndDeletable) {
+            throw new BadRequestException("Only admin or task giver can delete draft/cancelled tasks");
+        }
+        // Delete all related assignments first
+        assignmentRepository.deleteAll(task.getAssignments());
+        // Then delete the task
+        taskRepository.delete(task);
     }
 
     /**
@@ -167,8 +219,8 @@ public class TaskService {
 
     private Task getTaskAndValidateGiver(Long taskId, User currentUser) {
         var task = getTaskOrThrow(taskId);
-        if (!task.getGiver().getId().equals(currentUser.getId())) {
-            throw new BadRequestException("Only the giver can perform this action");
+        if (!task.getGiver().getId().equals(currentUser.getId()) && currentUser.getRole() != edu.info5100.questapp.user.Role.ADMIN) {
+            throw new BadRequestException("Only the giver or admin can perform this action");
         }
         return task;
     }

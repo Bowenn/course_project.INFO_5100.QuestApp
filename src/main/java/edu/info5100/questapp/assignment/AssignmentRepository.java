@@ -24,4 +24,7 @@ public interface AssignmentRepository extends JpaRepository<Assignment, Long> {
 
     /** Assignments by status for a taker */
     List<Assignment> findByTakerAndStatusOrderByAssignedAtDesc(User taker, AssignmentStatus status);
+
+    /** Find an assignment by task ID and status (used for task-based confirm) */
+    Optional<Assignment> findByTask_IdAndStatus(Long taskId, AssignmentStatus status);
 }
